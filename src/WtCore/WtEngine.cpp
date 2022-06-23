@@ -88,6 +88,18 @@ WTSContractInfo* WtEngine::get_contract_info(const char* stdCode)
 	return _base_data_mgr->getContract(cInfo._code, cInfo._exchg);
 }
 
+std::string WtEngine::get_rawcode(const char* stdCode)
+{
+	CodeHelper::CodeInfo cInfo = CodeHelper::extractStdCode(stdCode, _hot_mgr);
+	if (cInfo.hasRule())
+	{
+		std::string code = _hot_mgr->getCustomRawCode(cInfo._ruletag, cInfo.stdCommID());
+		return CodeHelper::rawMonthCodeToStdCode(code.c_str(), cInfo._exchg);
+	}
+
+	return "";
+}
+
 WTSSessionInfo* WtEngine::get_session_info(const char* sid, bool isCode /* = false */)
 {
 	if (!isCode)
@@ -680,6 +692,48 @@ double WtEngine::get_cur_price(const char* stdCode)
 	{
 		return it->second;
 	}
+}
+
+double WtEngine::get_day_price(const char* stdCode, int flag /* = 0 */)
+{
+	auto len = strlen(stdCode);
+	char lastChar = stdCode[len - 1];
+	//前复权直接读取标准合约代码
+	bool bAdjusted = (lastChar == SUFFIX_QFQ || lastChar == SUFFIX_HFQ);
+	//前复权需要去掉－，后复权和未复权都直接查找
+	std::string sCode = (lastChar == SUFFIX_QFQ) ? std::string(stdCode, len - 1) : stdCode;
+
+	//找不到的时候，先读取未复权的tick数据
+	std::string fCode = bAdjusted ? std::string(stdCode, len - 1) : stdCode;
+	WTSTickData* lastTick = _data_mgr->grab_last_tick(fCode.c_str());
+	if (lastTick == NULL)
+		return 0.0;
+
+	WTSContractInfo* cInfo = lastTick->getContractInfo();
+
+	double ret = 0.0;
+	switch (flag)
+	{
+	case 0:
+		ret = lastTick->open(); break;
+	case 1:
+		ret = lastTick->high(); break;
+	case 2:
+		ret = lastTick->low(); break;
+	case 3:
+		ret = lastTick->price(); break;
+	default:
+		break;
+	}
+	lastTick->release();
+
+	//如果是后复权，则进行复权处理
+	if (lastChar == SUFFIX_HFQ)
+	{
+		ret *= get_exright_factor(stdCode, cInfo->getCommInfo());
+	}
+
+	return ret;
 }
 
 double WtEngine::get_exright_factor(const char* stdCode, WTSCommodityInfo* commInfo /* = NULL */)

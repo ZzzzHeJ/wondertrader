@@ -1538,14 +1538,23 @@ bool WtRdmDtReader::cacheHisBarsFromFile(void* codeInfo, const std::string& key,
 					auto& ayFactors = getAdjFactors(cInfo->_code, cInfo->_exchg, cInfo->_product);
 					if(!ayFactors.empty())
 					{
+						double baseFactor = 1.0;
+						if (cInfo->_exright == 1)
+							baseFactor = ayFactors.back()._factor;
+						else if (cInfo->_exright == 2)
+							barList._factor = ayFactors.back()._factor;
+
 						//做前复权处理
 						std::size_t lastIdx = curCnt;
 						WTSBarStruct bar;
 						firstBar = tempAy->data();
-						for (auto& adjFact : ayFactors)
+						for (auto it = ayFactors.rbegin(); it != ayFactors.rend(); it++)
 						{
+							const AdjFactor& adjFact = *it;
 							bar.date = adjFact._date;
-							double factor = adjFact._factor;
+
+							//调整因子
+							double factor = adjFact._factor / baseFactor;
 
 							WTSBarStruct* pBar = NULL;
 							pBar = std::lower_bound(firstBar, firstBar + lastIdx - 1, bar, [period](const WTSBarStruct& a, const WTSBarStruct& b) {
@@ -1561,10 +1570,10 @@ bool WtRdmDtReader::cacheHisBarsFromFile(void* codeInfo, const std::string& key,
 								std::size_t curIdx = pBar - firstBar;
 								while (pBar && curIdx < lastIdx)
 								{
-									pBar->open /= factor;
-									pBar->high /= factor;
-									pBar->low /= factor;
-									pBar->close /= factor;
+									pBar->open *= factor;
+									pBar->high *= factor;
+									pBar->low *= factor;
+									pBar->close *= factor;
 
 									pBar++;
 									curIdx++;

@@ -220,7 +220,14 @@ bool WtUftRunner::initUftStrategies()
 		const char* name = cfgItem->getCString("name");
 		UftStrategyPtr stra = _uft_stra_mgr.createStrategy(name, id);
 		if (stra == NULL)
+		{
+			WTSLogger::error("UFT Strategy {} create failed", name);
 			continue;
+		}
+		else
+		{
+			WTSLogger::info("UFT Strategy {}({}) created", name, id);
+		}
 
 		stra->self()->init(cfgItem->get("params"));
 		UftStraContext* ctx = new UftStraContext(&_uft_engine, id);
@@ -235,7 +242,7 @@ bool WtUftRunner::initUftStrategies()
 		}
 		else
 		{
-			WTSLogger::error("Trader {} not exists, binding trader to HFT strategy failed", traderid);
+			WTSLogger::error("Trader {} not exists, binding trader to UFT strategy failed", traderid);
 		}
 
 		_uft_engine.addContext(UftContextPtr(ctx));
@@ -326,7 +333,7 @@ bool WtUftRunner::initTraders(WTSVariant* cfgTrader)
 		count++;
 	}
 
-	WTSLogger::info("%{} traders loaded", count);
+	WTSLogger::info("{} traders loaded", count);
 
 	return true;
 }

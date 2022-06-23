@@ -11,6 +11,7 @@
 #include "DataManager.h"
 #include "StateMonitor.h"
 #include "WtHelper.h"
+#include "IndexFactory.h"
 
 #include "../Share/StrUtil.hpp"
 #include "../Share/DLLHelper.hpp"
@@ -26,12 +27,13 @@
 
 //////////////////////////////////////////////////////////////////////////
 //ParserAdapter
-ParserAdapter::ParserAdapter(WTSBaseDataMgr * bgMgr, DataManager* dtMgr)
+ParserAdapter::ParserAdapter(WTSBaseDataMgr * bgMgr, DataManager* dtMgr, IndexFactory *idxFactory)
 	: _parser_api(NULL)
 	, _remover(NULL)
 	, _stopped(false)
 	, _bd_mgr(bgMgr)
 	, _dt_mgr(dtMgr)
+	, _idx_fact(idxFactory)
 	, _cfg(NULL)
 {
 }
@@ -174,10 +176,15 @@ bool ParserAdapter::init(const char* id, WTSVariant* cfg)
 					auto ay = StrUtil::split((*it).c_str(), ".");
 					if (ay.size() == 1)
 						code = ay[0];
-					else
+					else if (ay.size() == 2)
 					{
 						exchg = ay[0];
 						code = ay[1];
+					}
+					else if (ay.size() == 3)
+					{
+						exchg = ay[0];
+						code = ay[2];
 					}
 					WTSContractInfo* contract = _bd_mgr->getContract(code.c_str(), exchg.c_str());
 					if (contract)
@@ -202,7 +209,9 @@ bool ParserAdapter::init(const char* id, WTSVariant* cfg)
 				ExchgFilter::iterator it = _exchg_filter.begin();
 				for (; it != _exchg_filter.end(); it++)
 				{
-					WTSArray* ayContract = _bd_mgr->getContracts((*it).c_str());
+					const char* exchg = (*it).c_str();
+					WTSArray* ayContract = _bd_mgr->getContracts(exchg);
+					auto cnt = ayContract->size();
 					WTSArray::Iterator it = ayContract->begin();
 					for (; it != ayContract->end(); it++)
 					{
@@ -211,6 +220,8 @@ bool ParserAdapter::init(const char* id, WTSVariant* cfg)
 					}
 
 					ayContract->release();
+
+					WTSLogger::log_dyn("parser", _id.c_str(), LL_INFO, "[{}] {} contracts of {} added to sublist...", _id.c_str(), cnt, exchg);
 				}
 			}
 			else
@@ -336,6 +347,9 @@ void ParserAdapter::handleQuote( WTSTickData *quote, uint32_t procFlag )
 
 	if (!_dt_mgr->writeTick(quote, procFlag))
 		return;
+
+	if (_idx_fact)
+		_idx_fact->handle_quote(quote);
 }
 
 void ParserAdapter::handleParserLog( WTSLogLevel ll, const char* message)

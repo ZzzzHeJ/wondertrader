@@ -336,6 +336,16 @@ void CtaStraBaseCtx::load_data(uint32_t flag /* = 0xFFFFFFFF */)
 					if(dItem.HasMember("opentdate"))
 						dInfo._opentdate = dItem["opentdate"].GetUint();
 
+					if (dItem.HasMember("maxprice"))
+						dInfo._max_price = dItem["maxprice"].GetDouble();
+					else
+						dInfo._max_price = dInfo._price;
+
+					if (dItem.HasMember("minprice"))
+						dInfo._min_price = dItem["minprice"].GetDouble();
+					else
+						dInfo._min_price = dInfo._price;
+
 					dInfo._profit = dItem["profit"].GetDouble();
 					dInfo._max_profit = dItem["maxprofit"].GetDouble();
 					dInfo._max_loss = dItem["maxloss"].GetDouble();
@@ -475,6 +485,8 @@ void CtaStraBaseCtx::save_data(uint32_t flag /* = 0xFFFFFFFF */)
 				rj::Value dItem(rj::kObjectType);
 				dItem.AddMember("long", dInfo._long, allocator);
 				dItem.AddMember("price", dInfo._price, allocator);
+				dItem.AddMember("maxprice", dInfo._max_price, allocator);
+				dItem.AddMember("minprice", dInfo._min_price, allocator);
 				dItem.AddMember("volume", dInfo._volume, allocator);
 				dItem.AddMember("opentime", dInfo._opentime, allocator);
 				dItem.AddMember("opentdate", dInfo._opentdate, allocator);
@@ -647,6 +659,9 @@ void CtaStraBaseCtx::update_dyn_profit(const char* stdCode, double price)
 					dInfo._max_profit = std::max(dInfo._profit, dInfo._max_profit);
 				else if (dInfo._profit < 0)
 					dInfo._max_loss = std::min(dInfo._profit, dInfo._max_loss);
+
+				dInfo._max_price = std::max(dInfo._max_price, price);
+				dInfo._min_price = std::min(dInfo._min_price, price);
 
 				dynprofit += dInfo._profit;
 			}
@@ -891,7 +906,7 @@ void CtaStraBaseCtx::on_session_begin(uint32_t uTDate)
 	{
 		const char* stdCode = it.first.c_str();
 		PosInfo& pInfo = (PosInfo&)it.second;
-		if(pInfo._frozen_date < uTDate && !decimal::eq(pInfo._frozen, 0))
+		if(pInfo._frozen_date!=0 && pInfo._frozen_date < uTDate && !decimal::eq(pInfo._frozen, 0))
 		{
 			log_debug("{} of %s frozen on {} released on {}", pInfo._frozen, stdCode, pInfo._frozen_date, uTDate);
 
@@ -1197,6 +1212,14 @@ double CtaStraBaseCtx::stra_get_price(const char* stdCode)
 	return 0.0;
 }
 
+double CtaStraBaseCtx::stra_get_day_price(const char* stdCode, int flag /* = 0 */)
+{
+	if (_engine)
+		return _engine->get_day_price(stdCode, flag);
+
+	return 0.0;
+}
+
 void CtaStraBaseCtx::stra_set_position(const char* stdCode, double qty, const char* userTag /* = "" */, double limitprice /* = 0.0 */, double stopprice /* = 0.0 */)
 {
 	_engine->sub_tick(id(), stdCode);
@@ -1281,12 +1304,15 @@ void CtaStraBaseCtx::do_set_position(const char* stdCode, double qty, const char
 		{
 			//ASSERT(diff>0);
 			pInfo._frozen += diff;
+			pInfo._frozen_date = curTDate;
 			log_debug("{} frozen position updated to {}", stdCode, pInfo._frozen);
 		}
 
 		DetailInfo dInfo;
 		dInfo._long = decimal::gt(qty, 0);
 		dInfo._price = curPx;
+		dInfo._max_price = curPx;
+		dInfo._min_price = curPx;
 		dInfo._volume = abs(diff);
 		dInfo._opentime = curTm;
 		dInfo._opentdate = curTDate;
@@ -1366,12 +1392,15 @@ void CtaStraBaseCtx::do_set_position(const char* stdCode, double qty, const char
 			if (commInfo->isT1())
 			{
 				pInfo._frozen += left;
+				pInfo._frozen_date = curTDate;
 				log_debug("{} frozen position up to {}", stdCode, pInfo._frozen);
 			}
 
 			DetailInfo dInfo;
 			dInfo._long = decimal::gt(qty, 0);
 			dInfo._price = curPx;
+			dInfo._max_price = curPx;
+			dInfo._min_price = curPx;
 			dInfo._volume = abs(left);
 			dInfo._opentime = curTm;
 			dInfo._opentdate = curTDate;
@@ -1489,6 +1518,11 @@ void CtaStraBaseCtx::stra_sub_ticks(const char* code)
 WTSCommodityInfo* CtaStraBaseCtx::stra_get_comminfo(const char* stdCode)
 {
 	return _engine->get_commodity_info(stdCode);
+}
+
+std::string CtaStraBaseCtx::stra_get_rawcode(const char* stdCode)
+{
+	return _engine->get_rawcode(stdCode);
 }
 
 uint32_t CtaStraBaseCtx::stra_get_tdate()
@@ -1720,12 +1754,19 @@ double CtaStraBaseCtx::stra_get_detail_profit(const char* stdCode, const char* u
 		if (strcmp(dInfo._opentag, userTag) != 0)
 			continue;
 
-		if (flag == 0)
+		switch (flag)
+		{
+		case 0:
 			return dInfo._profit;
-		else if (flag > 0)
+		case 1:
 			return dInfo._max_profit;
-		else
+		case -1:
 			return dInfo._max_loss;
+		case 2:
+			return dInfo._max_price;
+		case -2:
+			return dInfo._min_price;
+		}
 	}
 
 	return 0.0;

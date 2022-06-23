@@ -789,6 +789,14 @@ void HisDataReplayer::run_by_bars(bool bNeedDump /* = false */)
 				nextTDate = _bd_mgr.calcTradingDate(commId.c_str(), nextDate, nextTime, false);
 				if (_opened_tdate != nextTDate)
 				{
+					if(_closed_tdate != _opened_tdate)
+					{
+						WTSLogger::debug("Tradingday {} ends", _cur_tdate);
+						_listener->handle_session_end(_cur_tdate);
+						_closed_tdate = _cur_tdate;
+						_day_cache.clear();
+					}
+
 					WTSLogger::debug("Tradingday {} begins", nextTDate);
 					_listener->handle_session_begin(nextTDate);
 					_opened_tdate = nextTDate;
@@ -1725,7 +1733,7 @@ void HisDataReplayer::onMinuteEnd(uint32_t uDate, uint32_t uTime, uint32_t endTD
 	for (auto it = _bars_cache.begin(); it != _bars_cache.end(); it++)
 	{
 		BarsListPtr& barsList = (BarsListPtr&)it->second;
-		double factor = barsList->_factor;
+		double factor = 1.0;// barsList->_factor;
 		if (barsList->_period != KP_DAY)
 		{
 			//如果历史数据指标不在尾部, 说明是回测模式, 要继续回放历史数据
@@ -2615,6 +2623,18 @@ WTSCommodityInfo* HisDataReplayer::get_commodity_info(const char* stdCode)
 	return _bd_mgr.getCommodity(CodeHelper::stdCodeToStdCommID(stdCode).c_str());
 }
 
+std::string HisDataReplayer::get_rawcode(const char* stdCode)
+{
+	CodeHelper::CodeInfo cInfo = CodeHelper::extractStdCode(stdCode, &_hot_mgr);
+	if(cInfo.hasRule())
+	{
+		std::string code = _hot_mgr.getRawCode(cInfo._exchg, cInfo._product, _cur_tdate);
+		return CodeHelper::rawMonthCodeToStdCode(code.c_str(), cInfo._exchg);
+	}
+
+	return "";
+}
+
 WTSSessionInfo* HisDataReplayer::get_session_info(const char* sid, bool isCode /* = false */)
 {
 	if (!isCode)
@@ -2707,6 +2727,61 @@ double HisDataReplayer::get_cur_price(const char* stdCode)
 	else
 	{
 		return it->second;
+	}
+}
+
+double HisDataReplayer::get_day_price(const char* stdCode, int flag /* = 0 */)
+{
+	if(_tick_enabled)
+	{
+		WTSTickData* lastTick = get_last_tick(stdCode);
+		if(lastTick != NULL)
+		{
+			const WTSTickStruct& curTs = lastTick->getTickStruct();
+
+			double price = 0.0;
+			switch (flag)
+			{
+			case 0:
+				price = curTs.open;
+				break;
+			case 1:
+				price = curTs.high;
+				break;
+			case 2:
+				price = curTs.low;
+				break;
+			case 3:
+				price = curTs.price;
+				break;
+			default:
+				break;
+			}
+
+			lastTick->release();
+
+			return price;
+		}
+	}
+
+	auto it = _day_cache.find(stdCode);
+	if (it == _day_cache.end())
+		return 0.0;
+
+	const WTSTickStruct& curTs = it->second;
+	double price = 0.0;
+	switch (flag)
+	{
+	case 0:
+		return curTs.open;
+	case 1:
+		return curTs.high;
+	case 2:
+		return curTs.low;
+	case 3:
+		return curTs.price;
+	default:
+		return 0.0;
 	}
 }
 

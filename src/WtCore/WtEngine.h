@@ -99,6 +99,7 @@ public:
 	WTSSessionInfo*		get_session_info(const char* sid, bool isCode = false);
 	WTSCommodityInfo*	get_commodity_info(const char* stdCode);
 	WTSContractInfo*	get_contract_info(const char* stdCode);
+	std::string			get_rawcode(const char* stdCode);
 
 	WTSTickData*	get_last_tick(uint32_t sid, const char* stdCode);
 	WTSTickSlice*	get_tick_slice(uint32_t sid, const char* stdCode, uint32_t count);
@@ -107,6 +108,8 @@ public:
 	void sub_tick(uint32_t sid, const char* code);
 
 	double get_cur_price(const char* stdCode);
+
+	double get_day_price(const char* stdCode, int flag = 0);
 
 	/*
 	 *	获取复权因子

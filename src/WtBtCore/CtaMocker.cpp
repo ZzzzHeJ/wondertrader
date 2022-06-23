@@ -109,6 +109,8 @@ void CtaMocker::dump_stradata()
 				rj::Value dItem(rj::kObjectType);
 				dItem.AddMember("long", dInfo._long, allocator);
 				dItem.AddMember("price", dInfo._price, allocator);
+				dItem.AddMember("maxprice", dInfo._max_price, allocator);
+				dItem.AddMember("minprice", dInfo._min_price, allocator);
 				dItem.AddMember("volume", dInfo._volume, allocator);
 				dItem.AddMember("opentime", dInfo._opentime, allocator);
 				dItem.AddMember("opentdate", dInfo._opentdate, allocator);
@@ -645,6 +647,9 @@ void CtaMocker::update_dyn_profit(const char* stdCode, double price)
 				else if (dInfo._profit < 0)
 					dInfo._max_loss = min(dInfo._profit, dInfo._max_loss);
 
+				dInfo._max_price = std::max(dInfo._max_price, price);
+				dInfo._min_price = std::min(dInfo._min_price, price);
+
 				dynprofit += dInfo._profit;
 			}
 
@@ -1129,6 +1134,14 @@ double CtaMocker::stra_get_price(const char* stdCode)
 	return 0.0;
 }
 
+double CtaMocker::stra_get_day_price(const char* stdCode, int flag /* = 0 */)
+{
+	if (_replayer)
+		return _replayer->get_day_price(stdCode, flag);
+
+	return 0.0;
+}
+
 void CtaMocker::stra_set_position(const char* stdCode, double qty, const char* userTag /* = "" */, double limitprice /* = 0.0 */, double stopprice /* = 0.0 */)
 {
 	WTSCommodityInfo* commInfo = _replayer->get_commodity_info(stdCode);
@@ -1254,6 +1267,8 @@ void CtaMocker::do_set_position(const char* stdCode, double qty, double price /*
 		DetailInfo dInfo;
 		dInfo._long = decimal::gt(qty, 0);
 		dInfo._price = trdPx;
+		dInfo._max_price = trdPx;
+		dInfo._min_price = trdPx;
 		dInfo._volume = abs(diff);
 		dInfo._opentime = curTm;
 		dInfo._opentdate = curTDate;
@@ -1337,6 +1352,8 @@ void CtaMocker::do_set_position(const char* stdCode, double qty, double price /*
 			DetailInfo dInfo;
 			dInfo._long = decimal::gt(qty, 0);
 			dInfo._price = trdPx;
+			dInfo._max_price = trdPx;
+			dInfo._min_price = trdPx;
 			dInfo._volume = abs(left);
 			dInfo._opentime = curTm;
 			dInfo._opentdate = curTDate;
@@ -1420,6 +1437,11 @@ void CtaMocker::stra_sub_ticks(const char* code)
 WTSCommodityInfo* CtaMocker::stra_get_comminfo(const char* stdCode)
 {
 	return _replayer->get_commodity_info(stdCode);
+}
+
+std::string CtaMocker::stra_get_rawcode(const char* stdCode)
+{
+	return _replayer->get_rawcode(stdCode);
 }
 
 uint32_t CtaMocker::stra_get_tdate()
@@ -1661,12 +1683,19 @@ double CtaMocker::stra_get_detail_profit(const char* stdCode, const char* userTa
 		if (strcmp(dInfo._opentag, userTag) != 0)
 			continue;
 
-		if (flag == 0)
+		switch (flag)
+		{
+		case 0:
 			return dInfo._profit;
-		else if (flag > 0)
+		case 1:
 			return dInfo._max_profit;
-		else
+		case -1:
 			return dInfo._max_loss;
+		case 2:
+			return dInfo._max_price;
+		case -2:
+			return dInfo._min_price;
+		}
 	}
 
 	return 0.0;
